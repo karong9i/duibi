@@ -308,6 +308,7 @@ function findHallForHost(hostName) {
 // STATE
 // ============================================================
 var hostHallMap = {};      // {hostName: hallName} from 厅数据
+var hostRoleMap = {};      // {hostName: '本公会主播'|'厅主'} from 厅数据
 var hallFileLoaded = false;
 var dailyFileLoaded = false;
 var hallFileName = '';
@@ -361,6 +362,7 @@ function processHallFile(file) {
       }
       // Track total 上麦时长 per (host, hall), pick the hall with longest time
       var hostHallTime = {};  // {host: {hall: totalMinutes}}
+      var roleMap = {};       // {host: role}
       for (var r=1; r<rows.length; r++) {
         var row = rows[r];
         if (!row||!row[0]||!row[3]) continue;
@@ -373,6 +375,7 @@ function processHallFile(file) {
           if (!hostHallTime[host]) hostHallTime[host] = {};
           if (!hostHallTime[host][hall]) hostHallTime[host][hall] = 0;
           hostHallTime[host][hall] += mins;
+          roleMap[host] = role;
         }
       }
       // Pick the hall with longest total time for each host
@@ -386,6 +389,7 @@ function processHallFile(file) {
       }
 
       hostHallMap = map;
+      hostRoleMap = roleMap;
       hallFileLoaded = true;
       hallFileName = name;
       updateImportUI();
@@ -627,7 +631,7 @@ function clearAllData() {
   if (!hallFileLoaded && !dailyFileLoaded) return;
   if (!confirm('确定清空全部数据？')) return;
   hallFileLoaded = false; dailyFileLoaded = false;
-  hostHallMap = {}; allDailyRecords = [];
+  hostHallMap = {}; hostRoleMap = {}; allDailyRecords = [];
   hallFileName = ''; dailyFileName = '';
   hallSummary = {}; catSummary = {};
   viewLevel='category'; viewCat=null; viewHall=null; viewHost=null; viewLoc=null;
@@ -673,7 +677,7 @@ function renderAllHosts() {
     var hosts = hallSummary[h].hosts || {};
     for (var hostName in hosts) {
       if (!allHosts[hostName]) {
-        allHosts[hostName] = {totalRev:0, hall: h, records: []};
+        allHosts[hostName] = {totalRev:0, hall: h, records: [], role: hostRoleMap[hostName]||''};
       }
       allHosts[hostName].totalRev += hosts[hostName].totalRev;
       allHosts[hostName].records = allHosts[hostName].records.concat(hosts[hostName].records);
@@ -683,6 +687,8 @@ function renderAllHosts() {
   var hostEntries = Object.entries(allHosts).sort(function(a,b){return b[1].totalRev-a[1].totalRev});
   var totalRev = 0;
   hostEntries.forEach(function(e){ totalRev += e[1].totalRev; });
+  var hallMasterCount = hostEntries.filter(function(e){return e[1].role==='厅主';}).length;
+  var guildHostCount = hostEntries.filter(function(e){return e[1].role==='本公会主播';}).length;
 
   var html = '<div class="detail-section">'+
     '<div class="detail-header">'+
@@ -695,32 +701,52 @@ function renderAllHosts() {
     '</div>'+
     '<div class="filter-bar">'+
       '<input type="text" id="hostSearch" placeholder="🔍 搜索主播..." oninput="renderAllHostTable()">'+
-      '<button class="sort-btn active" id="sortAllDesc" onclick="curSort=\'rev-desc\';renderAllHostTable();this.classList.add(\'active\');document.getElementById(\'sortAllAsc\').classList.remove(\'active\')">💰 收入↓</button>'+
-      '<button class="sort-btn" id="sortAllAsc" onclick="curSort=\'rev-asc\';renderAllHostTable();this.classList.add(\'active\');document.getElementById(\'sortAllDesc\').classList.remove(\'active\')">💰 收入↑</button>'+
+      '<button class="sort-btn active" id="filterAllRole" onclick="window._roleFilter=\'\';renderAllHostTable();">👥 全部</button>'+
+      '<button class="sort-btn" id="filterGuild" onclick="window._roleFilter=\'本公会主播\';renderAllHostTable();">🎤 本公会主播</button>'+
+      '<button class="sort-btn" id="filterMaster" onclick="window._roleFilter=\'厅主\';renderAllHostTable();">👑 厅主</button>'+
+      '<button class="sort-btn active" id="sortAllDesc" onclick="curSort=\'rev-desc\';renderAllHostTable();">💰 收入↓</button>'+
+      '<button class="sort-btn" id="sortAllAsc" onclick="curSort=\'rev-asc\';renderAllHostTable();">💰 收入↑</button>'+
       '<span id="hostCount" style="font-size:12px;color:var(--text-secondary);margin-left:auto"></span></div>'+
     '<div class="table-summary">'+
       '<span>总收入: <strong>¥'+totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</strong></span>'+
       '<span>主播总数: <strong>'+hostEntries.length+'</strong></span>'+
+      '<span>👑厅主: <strong>'+hallMasterCount+'</strong></span>'+
+      '<span>🎤本公会: <strong>'+guildHostCount+'</strong></span>'+
       '</div>'+
     '<div class="table-wrap" id="hostTableWrap"></div></div>';
   document.getElementById('mainContent').innerHTML = html;
   window._allHostEntries = hostEntries;
+  window._roleFilter = '';
   renderAllHostTable();
 }
 
 function renderAllHostTable() {
   var entries = (window._allHostEntries || []).slice();
   var search = (document.getElementById('hostSearch')?.value||'').toLowerCase();
-  var filtered = search ? entries.filter(function(e){return e[0].toLowerCase().indexOf(search)!==-1;}) : entries;
+  var roleFilter = window._roleFilter || '';
+
+  var filtered = entries;
+  if (search) filtered = filtered.filter(function(e){return e[0].toLowerCase().indexOf(search)!==-1;});
+  if (roleFilter) filtered = filtered.filter(function(e){return e[1].role===roleFilter;});
 
   if (curSort==='rev-desc') filtered.sort(function(a,b){return b[1].totalRev-a[1].totalRev;});
   else filtered.sort(function(a,b){return a[1].totalRev-b[1].totalRev;});
 
+  // Update filter button active states
+  var btns = document.querySelectorAll('.filter-bar .sort-btn');
+  var fa = document.getElementById('filterAllRole');
+  var fg = document.getElementById('filterGuild');
+  var fm = document.getElementById('filterMaster');
+  if (fa) fa.className = 'sort-btn' + (roleFilter===''?' active':'');
+  if (fg) fg.className = 'sort-btn' + (roleFilter==='本公会主播'?' active':'');
+  if (fm) fm.className = 'sort-btn' + (roleFilter==='厅主'?' active':'');
+
   document.getElementById('hostCount').textContent = '共 '+filtered.length+' 位主播';
   var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
 
-  var h = '<table><thead><tr><th>#</th><th>主播昵称</th><th>所属厅</th><th>分类</th>'+
+  var h = '<table><thead><tr><th>#</th><th>主播昵称</th><th>身份</th><th>所属厅</th><th>分类</th>'+
     '<th class="rev-col">流水(元)</th><th class="rev-col">礼物流水</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
+    '<th>上麦时长</th><th class="num-col">记录天数</th></tr></thead><tbody>';
     '<th>上麦时长</th><th class="num-col">记录天数</th></tr></thead><tbody>';
 
   filtered.forEach(function(e, i){
@@ -729,8 +755,12 @@ function renderAllHostTable() {
     var rec = records[0] || {};
     var cls = hd.totalRev > 5000 ? ' row-high' : '';
     var hallInfo = getHallCat(hd.hall);
+    var role = hd.role || '';
+    var roleTag = role==='厅主'?'<span class="role-tag role-厅主">👑 厅主</span>':
+                  role==='本公会主播'?'<span class="role-tag role-本公会主播">🎤 本公会主播</span>':'';
     h += '<tr class="'+cls+'"><td>'+(i+1)+'</td>'+
       '<td><a href="javascript:void(0)" onclick="drillHostAll(\''+escAttr(hostName)+'\')" style="color:#4f46e5;text-decoration:none;font-weight:600">'+escHtml(hostName)+'</a></td>'+
+      '<td>'+roleTag+'</td>'+
       '<td>'+escHtml(hd.hall)+'</td>'+
       '<td><span style="font-size:11px;padding:2px 6px;border-radius:4px;'+
         (hallInfo.cat==='内部'?'background:#eef2ff;color:#4f46e5':'')+
