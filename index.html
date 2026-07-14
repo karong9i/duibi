@@ -534,29 +534,24 @@ function rebuildIfReady() {
 // DATA REBUILD
 // ============================================================
 function rebuild() {
-  // Join: daily records + hall mapping
-  // For each daily record, find its hall via hostHallMap or fuzzy match
+  // Join: daily records + hall mapping (only keep 本公会主播/厅主)
+  var filteredRecords = [];
   for (var i=0;i<allDailyRecords.length;i++) {
     var dr = allDailyRecords[i];
     var hall = findHallForHost(dr.host);
-    if (hall) {
-      dr.hall = hall;
-      var ci = getHallCat(hall);
-      dr.cat = ci.cat; dr.loc = ci.loc;
-    } else {
-      // Host not in any known hall → self-classify
-      dr.hall = dr.host;
-      var ci2 = getHallCat(dr.host);
-      dr.cat = ci2.cat; dr.loc = ci2.loc;
-    }
+    if (!hall) continue;  // Skip: not in hostHallMap (not 本公会主播/厅主)
+    dr.hall = hall;
+    var ci = getHallCat(hall);
+    dr.cat = ci.cat; dr.loc = ci.loc;
+    filteredRecords.push(dr);
   }
 
-  // Build summaries
+  // Build summaries from filtered records only
   hallSummary = {};
   catSummary = {'内部':{halls:{},totalRev:0},'内部加盟':{halls:{},totalRev:0},'外部加盟':{halls:{},totalRev:0},'其他':{halls:{},totalRev:0}};
 
-  for (var k=0;k<allDailyRecords.length;k++) {
-    var r = allDailyRecords[k];
+  for (var k=0;k<filteredRecords.length;k++) {
+    var r = filteredRecords[k];
     var hall = r.hall, cat = r.cat, loc = r.loc;
 
     if (!hallSummary[hall]) hallSummary[hall] = {cat:cat, loc:loc, totalRev:0, hosts:{}, dateSet: new Set()};
