@@ -441,7 +441,7 @@ function processDailyFile(file) {
           date: d,
           host: host,
           hostId: String(row[2]||''),
-          rev: parseFloat(row[7])||0,
+          rev: (parseFloat(row[7])||0) + (parseFloat(row[8])||0),
           gift: (parseFloat(row[9])||0) + (parseFloat(row[11])||0),
           play: parseFloat(row[10])||0,
           lucky: (parseFloat(row[12])||0) + (parseFloat(row[13])||0),
