@@ -746,14 +746,16 @@ function renderAllHostTable() {
   var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
 
   var h = '<table><thead><tr><th>#</th><th>主播昵称</th><th>身份</th><th>所属厅</th><th>分类</th>'+
-    '<th class="rev-col">流水(元)</th><th class="rev-col">礼物流水</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
-    '<th>上麦时长</th><th class="num-col">记录天数</th></tr></thead><tbody>';
+    '<th class="rev-col">流水(元)</th><th class="rev-col">本公会多人普通礼物</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
     '<th>上麦时长</th><th class="num-col">记录天数</th></tr></thead><tbody>';
 
   filtered.forEach(function(e, i){
     var hostName = e[0], hd = e[1];
     var records = hd.records || [];
     var rec = records[0] || {};
+    // Sum gift/play/lucky across all records
+    var sumGift = 0, sumPlay = 0, sumLucky = 0;
+    records.forEach(function(r){ sumGift += r.gift||0; sumPlay += r.play||0; sumLucky += r.lucky||0; });
     var cls = hd.totalRev > 5000 ? ' row-high' : '';
     var hallInfo = getHallCat(hd.hall);
     var role = hd.role || '';
@@ -770,9 +772,9 @@ function renderAllHostTable() {
         (hallInfo.cat==='其他'?'background:#f3f4f6;color:#6b7280':'')+
         '">'+hallInfo.cat+'</span></td>'+
       '<td class="rev-col">¥'+fmt(hd.totalRev)+'</td>'+
-      '<td class="num-col">¥'+fmt(rec.gift||0)+'</td>'+
-      '<td class="num-col">¥'+fmt(rec.play||0)+'</td>'+
-      '<td class="num-col">¥'+fmt(rec.lucky||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(sumGift)+'</td>'+
+      '<td class="num-col">¥'+fmt(sumPlay)+'</td>'+
+      '<td class="num-col">¥'+fmt(sumLucky)+'</td>'+
       '<td>'+(rec.online||'')+'</td>'+
       '<td class="num-col">'+records.length+'</td></tr>';
   });
@@ -921,11 +923,14 @@ function renderHostTable() {
   var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
 
   var h = '<table><thead><tr><th>#</th><th>主播昵称</th><th>主播ID</th>'+
-    '<th class="rev-col">流水(元)</th><th class="rev-col">礼物流水</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
+    '<th class="rev-col">流水(元)</th><th class="rev-col">本公会多人普通礼物</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
     '<th>上麦时长</th><th class="num-col">有效天</th></tr></thead><tbody>';
 
   filtered.forEach(function(e, i){
     var hostName = e[0], hd = e[1];
+    // Sum gift/play/lucky across all records
+    var sumGift = 0, sumPlay = 0, sumLucky = 0;
+    (hd.records||[]).forEach(function(r){ sumGift += r.gift||0; sumPlay += r.play||0; sumLucky += r.lucky||0; });
     var rec = hd.records[0] || {};
     var cls = hd.totalRev > 5000 ? ' row-high' : '';
     var daysCount = hd.records.length;
@@ -933,9 +938,9 @@ function renderHostTable() {
       '<td><a href="javascript:void(0)" onclick="drillHost(\''+escAttr(hostName)+'\')" style="color:#4f46e5;text-decoration:none;font-weight:600">'+escHtml(hostName)+'</a></td>'+
       '<td>'+escHtml(rec.hostId||'')+'</td>'+
       '<td class="rev-col">¥'+fmt(hd.totalRev)+'</td>'+
-      '<td class="num-col">¥'+fmt(rec.gift||0)+'</td>'+
-      '<td class="num-col">¥'+fmt(rec.play||0)+'</td>'+
-      '<td class="num-col">¥'+fmt(rec.lucky||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(sumGift)+'</td>'+
+      '<td class="num-col">¥'+fmt(sumPlay)+'</td>'+
+      '<td class="num-col">¥'+fmt(sumLucky)+'</td>'+
       '<td>'+(rec.online||'')+'</td>'+
       '<td class="num-col">'+(rec.onlineDays||0)+'</td></tr>';
   });
@@ -1011,7 +1016,7 @@ function renderHostDaily() {
   var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
   var totalRev = 0;
   html += '<div class="table-wrap"><table><thead><tr>'+
-    '<th>日期</th><th class="rev-col">日流水(元)</th><th class="rev-col">礼物流水</th>'+
+    '<th>日期</th><th class="rev-col">日流水(元)</th><th class="rev-col">本公会多人普通礼物</th>'+
     '<th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
     '<th>上麦时长</th><th class="num-col">有效天</th></tr></thead><tbody>';
 
