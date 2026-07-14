@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多人直播数据统计面板</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #f0f2f5; --card-bg: #ffffff; --text: #1a1a2e; --text-secondary: #6b7280;
+  --border: #e5e7eb; --internal: #4f46e5; --internal-light: #eef2ff;
+  --franchise: #0891b2; --franchise-light: #ecfeff; --external: #ea580c;
+  --external-light: #fff7ed; --shadow: 0 1px 3px rgba(0,0,0,0.08); --radius: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.header { text-align: center; padding: 16px 0 4px; }
+.header h1 { font-size: 24px; font-weight: 700; }
+.header .subtitle { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+
+/* Import Status */
+.import-status { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+.import-box {
+  background: var(--card-bg); border: 2px dashed #d1d5db; border-radius: var(--radius);
+  padding: 22px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative;
+}
+.import-box:hover { border-color: #6366f1; background: #f8f7ff; }
+.import-box.loaded { border-color: #22c55e; border-style: solid; background: #f0fdf4; }
+.import-box.loaded .box-icon { color: #22c55e; }
+.import-box .box-icon { font-size: 28px; margin-bottom: 4px; }
+.import-box .box-title { font-size: 13px; font-weight: 600; }
+.import-box .box-hint { font-size: 11px; color: var(--text-secondary); }
+.import-box .box-status { font-size: 11px; margin-top: 4px; }
+.import-box .box-status.ok { color: #16a34a; }
+.import-box .box-status.wait { color: #9ca3af; }
+.import-box input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.import-box .btn-replace { font-size: 10px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; background: #fff; margin-top: 4px; display: inline-block; position: relative; z-index: 1; }
+.import-box .btn-replace:hover { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
+
+.summary-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 16px 0 24px; }
+.summary-card { background: var(--card-bg); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); cursor: pointer; transition: all 0.25s; border: 2px solid transparent; }
+.summary-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.summary-card.active { border-color: currentColor; }
+.summary-card.internal { color: var(--internal); } .summary-card.internal .card-icon { background: var(--internal-light); }
+.summary-card.franchise { color: var(--franchise); } .summary-card.franchise .card-icon { background: var(--franchise-light); }
+.summary-card.external { color: var(--external); } .summary-card.external .card-icon { background: var(--external-light); }
+.summary-card.other { color: #6b7280; } .summary-card.other .card-icon { background: #f3f4f6; }
+.summary-card.all { color: #7c3aed; background: linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%); border: 2px solid #c4b5fd; } .summary-card.all .card-icon { background: #ede9fe; }
+.card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.card-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.card-label { font-size: 14px; font-weight: 600; }
+.card-revenue { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+.card-meta { font-size: 12px; color: var(--text-secondary); display: flex; gap: 14px; flex-wrap: wrap; }
+
+.hall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; padding: 16px 0; }
+.hall-card { background: var(--card-bg); border-radius: 10px; padding: 16px; box-shadow: var(--shadow); cursor: pointer; transition: all 0.2s; border: 1px solid var(--border); }
+.hall-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #6366f1; }
+.hall-card .hall-name { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.hall-card .hall-rev { font-size: 20px; font-weight: 700; }
+.hall-card .hall-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.loc-tag { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--external-light); color: var(--external); font-weight: 600; margin-top: 4px; }
+
+.detail-section { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 24px; overflow: hidden; }
+.detail-header { padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.detail-header h2 { font-size: 16px; font-weight: 700; }
+.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.breadcrumb span { cursor: pointer; }
+.breadcrumb span:hover { color: #4f46e5; }
+.breadcrumb .sep { color: #d1d5db; cursor: default; }
+.breadcrumb .current { color: var(--text); font-weight: 600; cursor: default; }
+.breadcrumb .current:hover { color: var(--text); }
+.badge { font-size: 11px; padding: 3px 8px; border-radius: 16px; font-weight: 600; }
+.badge-internal { background: var(--internal-light); color: var(--internal); }
+.badge-franchise { background: var(--franchise-light); color: var(--franchise); }
+.badge-external { background: var(--external-light); color: var(--external); }
+
+.sub-tabs { display: flex; gap: 6px; padding: 10px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; background: #fafbfc; }
+.sub-tab { padding: 5px 12px; border-radius: 16px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: #fff; color: var(--text-secondary); transition: all 0.2s; white-space: nowrap; }
+.sub-tab:hover { border-color: #6366f1; color: #4f46e5; }
+.sub-tab.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+
+.filter-bar { padding: 10px 24px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.filter-bar input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; outline: none; width: 180px; font-family: inherit; }
+.filter-bar input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.1); }
+.sort-btn { padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; cursor: pointer; background: #fff; color: var(--text-secondary); }
+.sort-btn:hover { background: #f3f4f6; }
+.sort-btn.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+
+.table-wrap { overflow-x: auto; max-height: 60vh; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table th { position: sticky; top: 0; background: #f8fafc; padding: 9px 10px; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 11px; border-bottom: 2px solid var(--border); z-index: 1; white-space: nowrap; }
+table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+table tbody tr:hover { background: #f8fafc; }
+table tbody tr.row-high { background: #fefce8; }
+.rev-col { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.num-col { text-align: right; font-variant-numeric: tabular-nums; }
+.table-summary { display: flex; gap: 16px; padding: 10px 24px; font-size: 12px; color: var(--text-secondary); flex-wrap: wrap; background: #fafbfc; }
+.table-summary strong { color: var(--text); }
+.empty-state { text-align: center; padding: 48px 24px; color: var(--text-secondary); }
+.empty-state .icon { font-size: 44px; margin-bottom: 10px; }
+.empty-state p { margin: 4px 0; }
+.role-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.role-厅主 { background: #fef3c7; color: #92400e; }
+.role-本公会主播 { background: #dbeafe; color: #1e40af; }
+.role-素人主播 { background: #f3f4f6; color: #6b7280; }
+.role-其他公会主播 { background: #fce7f3; color: #9d174d; }
+
+.top-bar { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 0 16px; flex-wrap: wrap; }
+.top-bar input[type="date"] { padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--card-bg); outline: none; }
+.top-bar input[type="date"]:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.btn { padding: 7px 16px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; background: #4f46e5; color: #fff; }
+.btn:hover { background: #4338ca; }
+.btn-outline { padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; cursor: pointer; background: var(--card-bg); color: var(--text-secondary); }
+.btn-outline:hover { background: #f9fafb; }
+.btn-danger { padding: 7px 14px; border: 1px solid #fecaca; border-radius: 8px; font-size: 13px; cursor: pointer; background: var(--card-bg); color: #ef4444; }
+.btn-danger:hover { background: #fef2f2; }
+.btn-back { padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; cursor: pointer; background: #fff; color: var(--text-secondary); display:none; }
+.btn-back:hover { background: #f3f4f6; }
+
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1f2937; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 12px; z-index: 9999; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+
+@media (max-width: 900px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) { .summary-row { grid-template-columns: 1fr; } .hall-grid { grid-template-columns: 1fr; } .import-status { grid-template-columns: 1fr; } }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>📊 多人直播数据统计面板</h1>
+    <div class="subtitle" id="headerInfo">请导入两个文件开始分析</div>
+  </div>
+
+  <!-- Two import boxes side by side -->
+  <div class="import-status">
+    <div class="import-box" id="boxHall">
+      <div class="box-icon">📋</div>
+      <div class="box-title">厅数据明细</div>
+      <div class="box-hint">场次汇总-嘉宾明细</div>
+      <div class="box-status wait" id="statusHall">⏳ 等待导入</div>
+      <input type="file" id="fileHall" accept=".xlsx,.xls">
+    </div>
+    <div class="import-box" id="boxDaily">
+      <div class="box-icon">📅</div>
+      <div class="box-title">主播数据明细</div>
+      <div class="box-hint">主播数据-按天明细</div>
+      <div class="box-status wait" id="statusDaily">⏳ 等待导入</div>
+      <input type="file" id="fileDaily" accept=".xlsx,.xls">
+    </div>
+  </div>
+
+  <div class="top-bar">
+    <label>📅 日期:</label>
+    <input type="date" id="dateFrom">
+    <span style="font-size:13px;color:var(--text-secondary)">至</span>
+    <input type="date" id="dateTo">
+    <button class="btn" onclick="applyDateFilter()">🔍 查询</button>
+    <button class="btn-outline" onclick="resetDateFilter()">↺ 全部</button>
+    <button class="btn-danger" onclick="clearAllData()">🗑 清空</button>
+    <button class="btn-back" id="btnBack" onclick="goBack()">← 返回</button>
+  </div>
+
+  <div id="mainContent"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// HALL → CATEGORY
+// ============================================================
+var HALL_CAT = {
+  // === 内部 (仅13厅) ===
+  '合财':{cat:'内部',loc:''},'和财':{cat:'内部',loc:''},
+  '明媚':{cat:'内部',loc:''},
+  '甜御社':{cat:'内部',loc:''},'甜御社👑果子':{cat:'内部',loc:''},
+  '赌狗女友':{cat:'内部',loc:''},
+  '天花板':{cat:'内部',loc:''},
+  'FACAI 1.0':{cat:'内部',loc:''},
+  'kiss u':{cat:'内部',loc:''},
+  '私有浪漫👑萝卜头👑雏田':{cat:'内部',loc:''},
+  '私藏浪漫':{cat:'内部',loc:''},'私藏男友·新厅待👑':{cat:'内部',loc:''},
+  'Eterno.永恒':{cat:'内部',loc:''},
+  '冷欲男友':{cat:'内部',loc:''},
+  '星坠男明星👑小依公主':{cat:'内部',loc:''},
+  '如约':{cat:'内部',loc:''},
+
+  // === 内部加盟 ===
+  '忘川👑新厅待冠':{cat:'内部加盟',loc:''},'忘忧阁':{cat:'内部加盟',loc:''},
+  '夜夜笙歌':{cat:'内部加盟',loc:''},'零点sound':{cat:'内部加盟',loc:''},
+  ' ㅤ屿唱':{cat:'内部加盟',loc:''},
+  '一见钟情👑新厅待冠':{cat:'内部加盟',loc:''},
+  // 0703 only
+  '星辰殿':{cat:'内部加盟',loc:''},'忧郁只是天赋':{cat:'内部加盟',loc:''},
+  '寻觅👑新厅待冠':{cat:'内部加盟',loc:''},
+
+  // === 外部加盟 - 利辛 ===
+  'FirstSight·初见':{cat:'外部加盟',loc:'利辛'},'C 位':{cat:'外部加盟',loc:'利辛'},
+  'Hickey·吻痕':{cat:'外部加盟',loc:'利辛'},'星系':{cat:'外部加盟',loc:'利辛'},
+  '屿礼👑宝宝':{cat:'外部加盟',loc:'利辛'},'屿礼':{cat:'外部加盟',loc:'利辛'},
+  '这是厅名':{cat:'外部加盟',loc:'利辛'},
+  '反差':{cat:'外部加盟',loc:'利辛'},
+
+  // === 外部加盟 - 阜南 ===
+  '律动👑新厅待冠':{cat:'外部加盟',loc:'阜南'},'少女心事':{cat:'外部加盟',loc:'阜南'},
+  '耳边女友👑新厅待冠':{cat:'外部加盟',loc:'阜南'},'极致男模👑新厅待冠':{cat:'外部加盟',loc:'阜南'},
+  'Insane-失控👑新厅待冠':{cat:'外部加盟',loc:'阜南'},'雾屿男音社👑新厅待冠':{cat:'外部加盟',loc:'阜南'},
+
+  // === 外部加盟 - 合肥 ===
+  '耳语/新厅待👑':{cat:'外部加盟',loc:'合肥'},'珩川·HexStrm':{cat:'外部加盟',loc:'合肥'},
+  '少年行':{cat:'外部加盟',loc:'合肥'},
+
+  // === 外部加盟 - 太和 ===
+  '告白':{cat:'外部加盟',loc:'太和'},'怀抱':{cat:'外部加盟',loc:'太和'},
+  '冷暴力':{cat:'外部加盟',loc:'太和'},'Miss U👑新厅待冠':{cat:'外部加盟',loc:'太和'},
+  '片刻珍藏👑Cc':{cat:'外部加盟',loc:'太和'},'噜噜脸儿':{cat:'外部加盟',loc:'太和'},
+  '冬天约定/新厅待👑':{cat:'外部加盟',loc:'太和'},
+
+  // === 外部加盟 - 界首 ===
+  '破界·Actor 👑玖玖👑瑄瑄酱':{cat:'外部加盟',loc:'界首'},'破界·Actor 👑待冠':{cat:'外部加盟',loc:'界首'},
+  '寻音谷•Crush👑濛濛烟雨':{cat:'外部加盟',loc:'界首'},
+  '破厅👑公主殿下':{cat:'外部加盟',loc:'界首'},
+
+  // === 外部加盟 - 霍邱 ===
+  '焱火/新厅待👑':{cat:'外部加盟',loc:'霍邱'},'热吻/新厅待👑':{cat:'外部加盟',loc:'霍邱'},
+  '占有欲/新厅待👑':{cat:'外部加盟',loc:'霍邱'},
+
+  // === 外部加盟 - 项城 ===
+  '晚声屿':{cat:'外部加盟',loc:'项城'},'无限':{cat:'外部加盟',loc:'项城'},
+  '声链👑新厅待冠':{cat:'外部加盟',loc:'项城'},
+
+  // === 外部加盟 - 山东 ===
+  '予你温柔👑新厅待冠':{cat:'外部加盟',loc:'山东'},'声约':{cat:'外部加盟',loc:'山东'},
+  '独家男友':{cat:'外部加盟',loc:'山东'},
+
+  // === 外部加盟 - 祁县 ===
+  '前男友  新厅待冠👑':{cat:'外部加盟',loc:'祁县'},
+  '前男友 👑  新厅待冠':{cat:'外部加盟',loc:'祁县'},
+};
+
+// Fuzzy match terms for hosts whose name contains these keywords
+var HALL_MATCH_TERMS = [
+  // 内部
+  {s:'合财',hall:'合财'},{s:'和财',hall:'和财'},{s:'明媚',hall:'明媚'},
+  {s:'甜御',hall:'甜御社'},{s:'果子',hall:'甜御社👑果子'},
+  {s:'赌狗',hall:'赌狗女友'},{s:'天花板',hall:'天花板'},{s:'花板',hall:'天花板'},
+  {s:'facai',hall:'FACAI 1.0'},{s:'kiss u',hall:'kiss u'},
+  {s:'私有浪漫',hall:'私有浪漫👑萝卜头👑雏田'},
+  {s:'私藏浪漫',hall:'私藏浪漫'},{s:'私藏男友',hall:'私藏男友·新厅待👑'},
+  {s:'eterno',hall:'Eterno.永恒'},{s:'永恒',hall:'Eterno.永恒'},
+  {s:'冷欲',hall:'冷欲男友'},{s:'星坠',hall:'星坠男明星👑小依公主'},{s:'如约',hall:'如约'},
+  {s:'断续',hall:'断续'},
+  // 内部加盟
+  {s:'忘川',hall:'忘川👑新厅待冠'},{s:'忘忧',hall:'忘忧阁'},
+  {s:'一见钟情',hall:'一见钟情👑新厅待冠'},
+  {s:'夜夜笙歌',hall:'夜夜笙歌'},{s:'零点',hall:'零点sound'},{s:'屿唱',hall:' ㅤ屿唱'},
+  {s:'星辰殿',hall:'星辰殿'},{s:'寻觅',hall:'寻觅👑新厅待冠'},
+  {s:'忧郁',hall:'忧郁只是天赋'},
+  // 外部加盟 - 利辛
+  {s:'初见',hall:'FirstSight·初见'},{s:'firstsight',hall:'FirstSight·初见'},
+  {s:'c位',hall:'C 位'},{s:'c 位',hall:'C 位'},
+  {s:'吻痕',hall:'Hickey·吻痕'},{s:'hickey',hall:'Hickey·吻痕'},
+  {s:'星系',hall:'星系'},{s:'屿礼',hall:'屿礼'},
+  {s:'厅名',hall:'这是厅名'},{s:'这是厅名',hall:'这是厅名'},
+  {s:'反差',hall:'反差'},
+  // 外部加盟 - 阜南
+  {s:'律动',hall:'律动👑新厅待冠'},{s:'少女心事',hall:'少女心事'},
+  {s:'耳边女友',hall:'耳边女友👑新厅待冠'},{s:'极致男模',hall:'极致男模👑新厅待冠'},
+  {s:'失控',hall:'Insane-失控👑新厅待冠'},{s:'雾屿',hall:'雾屿男音社👑新厅待冠'},
+  // 外部加盟 - 合肥
+  {s:'耳语',hall:'耳语/新厅待👑'},{s:'珩川',hall:'珩川·HexStrm'},{s:'hexstrm',hall:'珩川·HexStrm'},
+  {s:'少年行',hall:'少年行'},
+  // 外部加盟 - 太和
+  {s:'冬天约定',hall:'冬天约定/新厅待👑'},{s:'告白',hall:'告白'},{s:'怀抱',hall:'怀抱'},
+  {s:'冷暴力',hall:'冷暴力'},{s:'miss',hall:'Miss U👑新厅待冠'},
+  {s:'片刻珍藏',hall:'片刻珍藏👑Cc'},{s:'噜噜脸',hall:'噜噜脸儿'},
+  // 外部加盟 - 界首
+  {s:'破界',hall:'破界·Actor 👑待冠'},{s:'寻音谷',hall:'寻音谷•Crush👑濛濛烟雨'},
+  {s:'破厅',hall:'破厅👑公主殿下'},
+  // 外部加盟 - 霍邱
+  {s:'焱火',hall:'焱火/新厅待👑'},{s:'热吻',hall:'热吻/新厅待👑'},
+  {s:'占有欲',hall:'占有欲/新厅待👑'},
+  // 外部加盟 - 项城
+  {s:'晚声屿',hall:'晚声屿'},{s:'无限',hall:'无限'},{s:'声链',hall:'声链👑新厅待冠'},
+  // 外部加盟 - 山东
+  {s:'予你温柔',hall:'予你温柔👑新厅待冠'},{s:'声约',hall:'声约'},{s:'独家',hall:'独家男友'},
+  // 外部加盟 - 祁县
+  {s:'前男友',hall:'前男友  新厅待冠👑'},
+];
+
+function getHallCat(name) { return HALL_CAT[name] || {cat:'其他',loc:''}; }
+
+function findHallForHost(hostName) {
+  // Look up in hostHallMap
+  if (hostHallMap[hostName]) return hostHallMap[hostName];
+  // Try fuzzy match
+  var hl = hostName.toLowerCase();
+  for (var i=0;i<HALL_MATCH_TERMS.length;i++) {
+    if (hl.indexOf(HALL_MATCH_TERMS[i].s)!==-1) return HALL_MATCH_TERMS[i].hall;
+  }
+  return null;
+}
+
+// ============================================================
+// STATE
+// ============================================================
+var hostHallMap = {};      // {hostName: hallName} from 厅数据
+var hallFileLoaded = false;
+var dailyFileLoaded = false;
+var hallFileName = '';
+var dailyFileName = '';
+var allDailyRecords = [];   // daily records from 主播数据-按天明细
+var hallSummary = {};
+var catSummary = {};
+var viewLevel = 'category';
+var viewCat = null;
+var viewHall = null;
+var viewHost = null;
+var viewLoc = null;
+var curSort = 'rev-desc';
+var dateFrom = null, dateTo = null;
+
+// ============================================================
+// FILE 1: 厅数据明细 → hall→host mapping
+// ============================================================
+document.getElementById('fileHall').addEventListener('change', function(){
+  if (this.files.length) processHallFile(this.files[0]); this.value='';
+});
+
+function processHallFile(file) {
+  var name = file.name;
+  if (!/\.xlsx?$/i.test(name)) { toast('⚠️ 仅支持 .xlsx/.xls'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      var sheetName = null;
+      if (wb.Sheets['场次汇总-嘉宾明细']) sheetName = '场次汇总-嘉宾明细';
+      else if (wb.Sheets['嘉宾明细']) sheetName = '嘉宾明细';
+      else {
+        for (var sn in wb.Sheets) {
+          var r0 = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''})[0] || [];
+          if (String(r0).indexOf('厅主昵称')!==-1 && String(r0).indexOf('主播昵称')!==-1) { sheetName=sn; break; }
+        }
+      }
+      if (!sheetName) { toast('❌ 未找到厅主→主播映射工作表'); return; }
+
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
+      // Parse 上麦时长 string (e.g. "357小时14分钟") → total minutes
+      function parseMinutes(s) {
+        var str = String(s||'');
+        var m = 0;
+        var hMatch = str.match(/(\d+)\s*小时/);
+        var mMatch = str.match(/(\d+)\s*分钟/);
+        if (hMatch) m += parseInt(hMatch[1]) * 60;
+        if (mMatch) m += parseInt(mMatch[1]);
+        return m;
+      }
+      // Track total 上麦时长 per (host, hall), pick the hall with longest time
+      var hostHallTime = {};  // {host: {hall: totalMinutes}}
+      for (var r=1; r<rows.length; r++) {
+        var row = rows[r];
+        if (!row||!row[0]||!row[3]) continue;
+        var hall = String(row[0]).replace(/^[ ]+|[ ]+$/g,'');
+        var host = String(row[3]).replace(/^[ ]+|[ ]+$/g,'');
+        var mins = parseMinutes(row[5]);  // col 5 = 上麦时长
+        if (hall && host) {
+          if (!hostHallTime[host]) hostHallTime[host] = {};
+          if (!hostHallTime[host][hall]) hostHallTime[host][hall] = 0;
+          hostHallTime[host][hall] += mins;
+        }
+      }
+      // Pick the hall with longest total time for each host
+      var map = {};
+      for (var host in hostHallTime) {
+        var bestHall = '', bestTime = 0;
+        for (var hall in hostHallTime[host]) {
+          if (hostHallTime[host][hall] > bestTime) { bestTime = hostHallTime[host][hall]; bestHall = hall; }
+        }
+        map[host] = bestHall;
+      }
+
+      hostHallMap = map;
+      hallFileLoaded = true;
+      hallFileName = name;
+      updateImportUI();
+      rebuildIfReady();
+      toast('✅ 厅数据: '+name+' ('+Object.keys(map).length+' 条映射)');
+    } catch(err) { console.error(err); toast('❌ '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// FILE 2: 主播数据明细 → daily revenue
+// ============================================================
+document.getElementById('fileDaily').addEventListener('change', function(){
+  if (this.files.length) processDailyFile(this.files[0]); this.value='';
+});
+
+function processDailyFile(file) {
+  var name = file.name;
+  if (!/\.xlsx?$/i.test(name)) { toast('⚠️ 仅支持 .xlsx/.xls'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      // Sheet: 主播数据-按天明细
+      var sheetName = null;
+      if (wb.Sheets['主播数据-按天明细']) sheetName = '主播数据-按天明细';
+      else {
+        for (var sn in wb.Sheets) {
+          var r0 = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''})[0] || [];
+          if (String(r0).indexOf('日期')!==-1 && String(r0).indexOf('主播昵称')!==-1 && String(r0).indexOf('流水')!==-1) { sheetName=sn; break; }
+        }
+      }
+      if (!sheetName) { toast('❌ 未找到「主播数据-按天明细」工作表'); return; }
+
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
+      // Row 0=header: 日期, 主播昵称, 主播ID, ..., 本公会多人直播流水(元)(col 7), ...
+      var records = [];
+      for (var r=1; r<rows.length; r++) {
+        var row = rows[r];
+        if (!row||!row[0]||!row[1]) continue;
+        var d = String(row[0]).replace(/^[ ]+|[ ]+$/g,'');
+        var host = String(row[1]).replace(/^[ ]+|[ ]+$/g,'');
+        if (!d || !host) continue;
+        // Normalize date: 20260615 → 2026-06-15
+        if (d.length===8) d = d.substring(0,4)+'-'+d.substring(4,6)+'-'+d.substring(6,8);
+        records.push({
+          date: d,
+          host: host,
+          hostId: String(row[2]||''),
+          rev: parseFloat(row[7])||0,
+          gift: parseFloat(row[10])||0,
+          play: parseFloat(row[11])||0,
+          lucky: parseFloat(row[13])||0,
+          online: String(row[5]||''),
+          onlineDays: parseInt(row[6])||0,
+        });
+      }
+
+      allDailyRecords = records;
+      dailyFileLoaded = true;
+      dailyFileName = name;
+      updateImportUI();
+      rebuildIfReady();
+      toast('✅ 主播数据: '+name+' ('+records.length+' 条日记录)');
+    } catch(err) { console.error(err); toast('❌ '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// IMPORT UI
+// ============================================================
+function updateImportUI() {
+  var boxH = document.getElementById('boxHall');
+  var statusH = document.getElementById('statusHall');
+  if (hallFileLoaded) {
+    boxH.classList.add('loaded');
+    statusH.textContent = '✅ '+hallFileName+' ('+Object.keys(hostHallMap).length+' 条)';
+    statusH.className = 'box-status ok';
+    // Add replace button
+    if (!document.getElementById('btnReplaceHall')) {
+      var btn = document.createElement('span');
+      btn.id='btnReplaceHall'; btn.className='btn-replace'; btn.textContent='🔄 更换文件';
+      btn.onclick = function(e){ e.stopPropagation(); hallFileLoaded=false; hostHallMap={}; hallFileName=''; updateImportUI(); rebuildIfReady(); document.getElementById('fileHall').click(); };
+      statusH.appendChild(document.createElement('br'));
+      statusH.appendChild(btn);
+    }
+  } else {
+    boxH.classList.remove('loaded');
+    statusH.textContent = '⏳ 等待导入';
+    statusH.className = 'box-status wait';
+    var br = document.getElementById('btnReplaceHall'); if (br) br.remove();
+  }
+
+  var boxD = document.getElementById('boxDaily');
+  var statusD = document.getElementById('statusDaily');
+  if (dailyFileLoaded) {
+    boxD.classList.add('loaded');
+    statusD.textContent = '✅ '+dailyFileName+' ('+allDailyRecords.length+' 条)';
+    statusD.className = 'box-status ok';
+    if (!document.getElementById('btnReplaceDaily')) {
+      var btn2 = document.createElement('span');
+      btn2.id='btnReplaceDaily'; btn2.className='btn-replace'; btn2.textContent='🔄 更换文件';
+      btn2.onclick = function(e){ e.stopPropagation(); dailyFileLoaded=false; allDailyRecords=[]; dailyFileName=''; updateImportUI(); rebuildIfReady(); document.getElementById('fileDaily').click(); };
+      statusD.appendChild(document.createElement('br'));
+      statusD.appendChild(btn2);
+    }
+  } else {
+    boxD.classList.remove('loaded');
+    statusD.textContent = '⏳ 等待导入';
+    statusD.className = 'box-status wait';
+    var br2 = document.getElementById('btnReplaceDaily'); if (br2) br2.remove();
+  }
+
+  updateHeaderInfo();
+}
+
+function updateHeaderInfo() {
+  var info = document.getElementById('headerInfo');
+  if (!hallFileLoaded && !dailyFileLoaded) info.textContent = '请导入两个文件开始分析';
+  else if (!hallFileLoaded) info.textContent = '✅ 主播数据已加载 | ⏳ 请导入「厅数据明细」建立厅→主播映射';
+  else if (!dailyFileLoaded) info.textContent = '✅ 厅数据已加载 | ⏳ 请导入「主播数据明细」获取日收入';
+  else info.textContent = '✅ 两个文件已就绪 | '+Object.keys(hostHallMap).length+' 条厅映射 | '+allDailyRecords.length+' 条日记录';
+}
+
+function rebuildIfReady() {
+  updateHeaderInfo();
+  if (!hallFileLoaded || !dailyFileLoaded) {
+    document.getElementById('mainContent').innerHTML =
+      '<div class="empty-state"><div class="icon">📂</div>'+
+      '<p>请导入两个 Excel 文件</p>'+
+      '<p style="font-size:12px;color:#9ca3af">厅数据明细（场次汇总-嘉宾明细）+ 主播数据明细（主播数据-按天明细）</p>'+
+      '<p style="font-size:11px;color:#9ca3af;margin-top:6px">'+
+      (hallFileLoaded?'✅ 厅数据已加载':'⏳ 厅数据明细')+' &nbsp; '+
+      (dailyFileLoaded?'✅ 主播数据已加载':'⏳ 主播数据明细')+'</p></div>';
+    viewLevel='category'; viewCat=null; viewHall=null;
+    return;
+  }
+  rebuild();
+  updateDateRange();
+  renderAll();
+}
+
+// ============================================================
+// DATA REBUILD
+// ============================================================
+function rebuild() {
+  // Join: daily records + hall mapping
+  // For each daily record, find its hall via hostHallMap or fuzzy match
+  for (var i=0;i<allDailyRecords.length;i++) {
+    var dr = allDailyRecords[i];
+    var hall = findHallForHost(dr.host);
+    if (hall) {
+      dr.hall = hall;
+      var ci = getHallCat(hall);
+      dr.cat = ci.cat; dr.loc = ci.loc;
+    } else {
+      // Host not in any known hall → self-classify
+      dr.hall = dr.host;
+      var ci2 = getHallCat(dr.host);
+      dr.cat = ci2.cat; dr.loc = ci2.loc;
+    }
+  }
+
+  // Build summaries
+  hallSummary = {};
+  catSummary = {'内部':{halls:{},totalRev:0},'内部加盟':{halls:{},totalRev:0},'外部加盟':{halls:{},totalRev:0},'其他':{halls:{},totalRev:0}};
+
+  for (var k=0;k<allDailyRecords.length;k++) {
+    var r = allDailyRecords[k];
+    var hall = r.hall, cat = r.cat, loc = r.loc;
+
+    if (!hallSummary[hall]) hallSummary[hall] = {cat:cat, loc:loc, totalRev:0, hosts:{}, dateSet: new Set()};
+    hallSummary[hall].totalRev += r.rev;
+    hallSummary[hall].dateSet.add(r.date);
+    if (!hallSummary[hall].hosts[r.host]) hallSummary[hall].hosts[r.host] = {totalRev:0, records:[]};
+    hallSummary[hall].hosts[r.host].totalRev += r.rev;
+    hallSummary[hall].hosts[r.host].records.push(r);
+
+    if (!catSummary[cat]) catSummary[cat] = {halls:{},totalRev:0};
+    if (!catSummary[cat].halls[hall]) catSummary[cat].halls[hall] = {loc:loc, totalRev:0};
+    catSummary[cat].halls[hall].totalRev += r.rev;
+    catSummary[cat].halls[hall].loc = loc;
+    catSummary[cat].totalRev += r.rev;
+  }
+
+  // Round
+  for (var h in hallSummary) {
+    hallSummary[h].totalRev = Math.round(hallSummary[h].totalRev*100)/100;
+    hallSummary[h].days = hallSummary[h].dateSet.size;
+    delete hallSummary[h].dateSet;
+    for (var host in hallSummary[h].hosts) {
+      hallSummary[h].hosts[host].totalRev = Math.round(hallSummary[h].hosts[host].totalRev*100)/100;
+    }
+  }
+  for (var c in catSummary) {
+    catSummary[c].totalRev = Math.round(catSummary[c].totalRev*100)/100;
+    for (var hh in catSummary[c].halls) {
+      catSummary[c].halls[hh].totalRev = Math.round(catSummary[c].halls[hh].totalRev*100)/100;
+    }
+  }
+}
+
+// ============================================================
+// DATE
+// ============================================================
+function updateDateRange() {
+  if (allDailyRecords.length===0) return;
+  var dates = allDailyRecords.map(function(r){return r.date;}).sort();
+  document.getElementById('dateFrom').value = dates[0];
+  document.getElementById('dateTo').value = dates[dates.length-1];
+}
+
+function getFilteredRecords() {
+  var from = document.getElementById('dateFrom').value;
+  var to = document.getElementById('dateTo').value;
+  if (!from && !to) return allDailyRecords;
+  return allDailyRecords.filter(function(r){
+    if (from && r.date < from) return false;
+    if (to && r.date > to) return false;
+    return true;
+  });
+}
+
+function applyDateFilter() {
+  var tmp = allDailyRecords;
+  allDailyRecords = getFilteredRecords();
+  rebuild();
+  allDailyRecords = tmp;
+  renderAll();
+}
+
+function resetDateFilter() {
+  if (allDailyRecords.length>0) {
+    var dates = allDailyRecords.map(function(r){return r.date;}).sort();
+    document.getElementById('dateFrom').value = dates[0];
+    document.getElementById('dateTo').value = dates[dates.length-1];
+  }
+  applyDateFilter();
+}
+
+function clearAllData() {
+  if (!hallFileLoaded && !dailyFileLoaded) return;
+  if (!confirm('确定清空全部数据？')) return;
+  hallFileLoaded = false; dailyFileLoaded = false;
+  hostHallMap = {}; allDailyRecords = [];
+  hallFileName = ''; dailyFileName = '';
+  hallSummary = {}; catSummary = {};
+  viewLevel='category'; viewCat=null; viewHall=null; viewHost=null; viewLoc=null;
+  document.getElementById('dateFrom').value=''; document.getElementById('dateTo').value='';
+  document.getElementById('fileHall').value=''; document.getElementById('fileDaily').value='';
+  updateImportUI();
+  document.getElementById('mainContent').innerHTML =
+    '<div class="empty-state"><div class="icon">📂</div><p>已清空，请重新导入文件</p></div>';
+}
+
+function goBack() {
+  if (viewLevel==='hostDaily') {
+    if (viewHall) { viewLevel='hallDetail'; viewHost=null; }
+    else { viewLevel='allHosts'; viewHost=null; }
+  }
+  else if (viewLevel==='hallDetail') { viewLevel='halls'; viewHall=null; }
+  else if (viewLevel==='halls') { viewLevel='category'; viewCat=null; viewLoc=null; }
+  else if (viewLevel==='allHosts') { viewLevel='category'; viewCat=null; viewHall=null; }
+  renderAll();
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function renderAll() {
+  var totalRev = 0;
+  for (var c in catSummary) totalRev += catSummary[c].totalRev;
+  document.getElementById('btnBack').style.display = (viewLevel!=='category') ? 'inline-block' : 'none';
+
+  if (!hallFileLoaded || !dailyFileLoaded) { rebuildIfReady(); return; }
+
+  if (viewLevel==='category') renderCategories();
+  else if (viewLevel==='allHosts') renderAllHosts();
+  else if (viewLevel==='halls') renderHalls();
+  else if (viewLevel==='hallDetail') renderHallDetail();
+  else if (viewLevel==='hostDaily') renderHostDaily();
+}
+
+function renderAllHosts() {
+  // Aggregate all hosts across all halls
+  var allHosts = {};
+  for (var h in hallSummary) {
+    var hosts = hallSummary[h].hosts || {};
+    for (var hostName in hosts) {
+      if (!allHosts[hostName]) {
+        allHosts[hostName] = {totalRev:0, hall: h, records: []};
+      }
+      allHosts[hostName].totalRev += hosts[hostName].totalRev;
+      allHosts[hostName].records = allHosts[hostName].records.concat(hosts[hostName].records);
+    }
+  }
+
+  var hostEntries = Object.entries(allHosts).sort(function(a,b){return b[1].totalRev-a[1].totalRev});
+  var totalRev = 0;
+  hostEntries.forEach(function(e){ totalRev += e[1].totalRev; });
+
+  var html = '<div class="detail-section">'+
+    '<div class="detail-header">'+
+      '<div class="breadcrumb">'+
+        '<span onclick="viewLevel=\'category\';viewCat=null;viewHall=null;renderAll()">📊 总览</span>'+
+        '<span class="sep">›</span>'+
+        '<span class="current">👥 全部主播</span>'+
+      '</div>'+
+      '<span style="font-size:12px;color:var(--text-secondary)">'+hostEntries.length+' 位主播</span>'+
+    '</div>'+
+    '<div class="filter-bar">'+
+      '<input type="text" id="hostSearch" placeholder="🔍 搜索主播..." oninput="renderAllHostTable()">'+
+      '<button class="sort-btn active" id="sortAllDesc" onclick="curSort=\'rev-desc\';renderAllHostTable();this.classList.add(\'active\');document.getElementById(\'sortAllAsc\').classList.remove(\'active\')">💰 收入↓</button>'+
+      '<button class="sort-btn" id="sortAllAsc" onclick="curSort=\'rev-asc\';renderAllHostTable();this.classList.add(\'active\');document.getElementById(\'sortAllDesc\').classList.remove(\'active\')">💰 收入↑</button>'+
+      '<span id="hostCount" style="font-size:12px;color:var(--text-secondary);margin-left:auto"></span></div>'+
+    '<div class="table-summary">'+
+      '<span>总收入: <strong>¥'+totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</strong></span>'+
+      '<span>主播总数: <strong>'+hostEntries.length+'</strong></span>'+
+      '</div>'+
+    '<div class="table-wrap" id="hostTableWrap"></div></div>';
+  document.getElementById('mainContent').innerHTML = html;
+  window._allHostEntries = hostEntries;
+  renderAllHostTable();
+}
+
+function renderAllHostTable() {
+  var entries = (window._allHostEntries || []).slice();
+  var search = (document.getElementById('hostSearch')?.value||'').toLowerCase();
+  var filtered = search ? entries.filter(function(e){return e[0].toLowerCase().indexOf(search)!==-1;}) : entries;
+
+  if (curSort==='rev-desc') filtered.sort(function(a,b){return b[1].totalRev-a[1].totalRev;});
+  else filtered.sort(function(a,b){return a[1].totalRev-b[1].totalRev;});
+
+  document.getElementById('hostCount').textContent = '共 '+filtered.length+' 位主播';
+  var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
+
+  var h = '<table><thead><tr><th>#</th><th>主播昵称</th><th>所属厅</th><th>分类</th>'+
+    '<th class="rev-col">流水(元)</th><th class="rev-col">礼物流水</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
+    '<th>上麦时长</th><th class="num-col">记录天数</th></tr></thead><tbody>';
+
+  filtered.forEach(function(e, i){
+    var hostName = e[0], hd = e[1];
+    var records = hd.records || [];
+    var rec = records[0] || {};
+    var cls = hd.totalRev > 5000 ? ' row-high' : '';
+    var hallInfo = getHallCat(hd.hall);
+    h += '<tr class="'+cls+'"><td>'+(i+1)+'</td>'+
+      '<td><a href="javascript:void(0)" onclick="drillHostAll(\''+escAttr(hostName)+'\')" style="color:#4f46e5;text-decoration:none;font-weight:600">'+escHtml(hostName)+'</a></td>'+
+      '<td>'+escHtml(hd.hall)+'</td>'+
+      '<td><span style="font-size:11px;padding:2px 6px;border-radius:4px;'+
+        (hallInfo.cat==='内部'?'background:#eef2ff;color:#4f46e5':'')+
+        (hallInfo.cat==='内部加盟'?'background:#ecfeff;color:#0891b2':'')+
+        (hallInfo.cat==='外部加盟'?'background:#fff7ed;color:#ea580c':'')+
+        (hallInfo.cat==='其他'?'background:#f3f4f6;color:#6b7280':'')+
+        '">'+hallInfo.cat+'</span></td>'+
+      '<td class="rev-col">¥'+fmt(hd.totalRev)+'</td>'+
+      '<td class="num-col">¥'+fmt(rec.gift||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(rec.play||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(rec.lucky||0)+'</td>'+
+      '<td>'+(rec.online||'')+'</td>'+
+      '<td class="num-col">'+records.length+'</td></tr>';
+  });
+  h += '</tbody></table>';
+  document.getElementById('hostTableWrap').innerHTML = h;
+}
+
+function drillHostAll(hostName) {
+  viewLevel = 'hostDaily';
+  viewHost = hostName;
+  viewHall = null;  // null means we came from "全部"
+  renderAll();
+}
+
+function renderCategories() {
+  var cards = [
+    {cat:'内部', icon:'🏠', cls:'internal', label:'内部'},
+    {cat:'内部加盟', icon:'🤝', cls:'franchise', label:'内部加盟'},
+    {cat:'外部加盟', icon:'🌐', cls:'external', label:'外部加盟'},
+    {cat:'其他', icon:'📦', cls:'other', label:'其他'}
+  ];
+  var totalRev = 0;
+  for (var c in catSummary) totalRev += catSummary[c].totalRev;
+
+  // Count all unique hosts across all halls
+  var allHostSet = {};
+  for (var h in hallSummary) {
+    for (var host in hallSummary[h].hosts) { allHostSet[host] = true; }
+  }
+  var allHostCount = Object.keys(allHostSet).length;
+
+  var html = '<div class="summary-row">';
+  // "全部" card - show all hosts ranked by revenue
+  html += '<div class="summary-card all" onclick="viewLevel=\'allHosts\';viewCat=null;viewHall=null;viewLoc=null;renderAll()">'+
+    '<div class="card-header"><div class="card-icon">👥</div><div class="card-label">全部</div></div>'+
+    '<div class="card-revenue">¥'+totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</div>'+
+    '<div class="card-meta"><span>👤 '+allHostCount+' 位主播</span><span>📊 100%</span></div></div>';
+
+  cards.forEach(function(c) {
+    var s = catSummary[c.cat] || {totalRev:0, halls:{}};
+    var hallCount = Object.values(s.halls).filter(function(h){return h.totalRev > 0;}).length;
+    var pct = totalRev>0 ? (s.totalRev/totalRev*100).toFixed(1) : '0';
+    html += '<div class="summary-card '+c.cls+'" onclick="viewLevel=\'halls\';viewCat=\''+c.cat+'\';viewHall=null;viewLoc=null;renderAll()">'+
+      '<div class="card-header"><div class="card-icon">'+c.icon+'</div><div class="card-label">'+c.label+'</div></div>'+
+      '<div class="card-revenue">¥'+s.totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</div>'+
+      '<div class="card-meta"><span>🏠 '+hallCount+' 个厅</span><span>📊 '+pct+'%</span></div></div>';
+  });
+  html += '</div>';
+
+  // Location tags
+  var extHalls = catSummary['外部加盟'] ? catSummary['外部加盟'].halls : {};
+  var locMap = {};
+  for (var h in extHalls) { var l=extHalls[h].loc||'其他'; if(!locMap[l]) locMap[l]={rev:0,n:0}; locMap[l].rev+=extHalls[h].totalRev; locMap[l].n++; }
+  var locE = Object.entries(locMap).sort(function(a,b){return b[1].rev-a[1].rev});
+  if (locE.length>0) {
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">';
+    locE.forEach(function(e){ html += '<span style="font-size:12px;padding:4px 10px;border-radius:12px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa">📍 '+e[0]+' ¥'+(e[1].rev/10000).toFixed(1)+'万 ('+e[1].n+'厅)</span>'; });
+    html += '</div>';
+  }
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+function renderHalls() {
+  var cat = viewCat;
+  var names={内部:'内部','内部加盟':'内部加盟','外部加盟':'外部加盟'};
+  var bages={内部:'badge-internal','内部加盟':'badge-franchise','外部加盟':'badge-external'};
+  var halls = catSummary[cat]?catSummary[cat].halls:{};
+  var entries = Object.entries(halls).filter(function(e){return e[1].totalRev > 0;}).sort(function(a,b){return b[1].totalRev-a[1].totalRev});
+
+  var locHtml = '';
+  if (cat==='外部加盟') {
+    var locs = {}; entries.forEach(function(e){var l=e[1].loc||'其他';if(!locs[l])locs[l]=0;locs[l]++;});
+    locHtml = '<div class="sub-tabs"><div class="sub-tab '+(viewLoc===null?'active':'')+'" onclick="viewLoc=null;renderHalls()">📍 全部</div>';
+    Object.keys(locs).sort().forEach(function(l){ locHtml+='<div class="sub-tab '+(viewLoc===l?'active':'')+'" onclick="viewLoc=\''+l+'\';renderHalls()">📍 '+l+'</div>'; });
+    locHtml += '</div>';
+    if (viewLoc) entries = entries.filter(function(e){return (e[1].loc||'其他')===viewLoc;});
+  }
+
+  var html = '<div class="detail-section">'+
+    '<div class="detail-header"><h2>🏠 '+names[cat]+' - 厅收入明细</h2>'+
+    '<div><span class="badge '+(bages[cat]||'')+'">'+names[cat]+'</span>'+
+    '<span style="margin-left:8px;font-size:13px;color:var(--text-secondary)">'+entries.length+' 个厅</span></div></div>'+
+    locHtml+'<div class="hall-grid">';
+
+  entries.forEach(function(e){
+    var hn=e[0], info=e[1];
+    var hostCount = hallSummary[hn] ? Object.keys(hallSummary[hn].hosts).length : 0;
+    var days = hallSummary[hn] ? hallSummary[hn].days : 0;
+    html += '<div class="hall-card" onclick="viewLevel=\'hallDetail\';viewHall=\''+escAttr(hn)+'\';renderAll()">'+
+      '<div class="hall-name">'+escHtml(hn)+'</div>'+
+      '<div class="hall-rev">¥'+info.totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</div>'+
+      '<div class="hall-meta">'+hostCount+' 位主播 · '+days+' 天</div>'+
+      (info.loc?'<div class="loc-tag">📍 '+info.loc+'</div>':'')+
+      '</div>';
+  });
+  html += '</div></div>';
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+function renderHallDetail() {
+  var hn = viewHall;
+  var info = hallSummary[hn] || {cat:'内部',loc:'',totalRev:0,hosts:{}};
+  var hosts = info.hosts || {};
+  var hostEntries = Object.entries(hosts).sort(function(a,b){return b[1].totalRev-a[1].totalRev});
+
+  var names={内部:'内部','内部加盟':'内部加盟','外部加盟':'外部加盟'};
+  var bages={内部:'badge-internal','内部加盟':'badge-franchise','外部加盟':'badge-external'};
+
+  var html = '<div class="detail-section">'+
+    '<div class="detail-header">'+
+      '<div class="breadcrumb">'+
+        '<span onclick="viewLevel=\'category\';viewCat=null;viewHall=null;renderAll()">📊 总览</span>'+
+        '<span class="sep">›</span>'+
+        '<span onclick="viewLevel=\'halls\';viewHall=null;renderAll()">'+names[info.cat]+'</span>'+
+        '<span class="sep">›</span>'+
+        '<span class="current">'+escHtml(hn)+'</span>'+
+      '</div>'+
+      '<span class="badge '+(bages[info.cat]||'')+'">'+names[info.cat]+'</span>'+
+    '</div>'+
+    '<div class="filter-bar">'+
+      '<input type="text" id="hostSearch" placeholder="🔍 搜索主播..." oninput="renderHostTable()">'+
+      '<button class="sort-btn active" onclick="curSort=\'rev-desc\';renderHostTable();this.classList.add(\'active\');this.nextElementSibling.classList.remove(\'active\')">💰 收入↓</button>'+
+      '<button class="sort-btn" onclick="curSort=\'rev-asc\';renderHostTable();this.classList.add(\'active\');this.previousElementSibling.classList.remove(\'active\')">💰 收入↑</button>'+
+      '<span id="hostCount" style="font-size:12px;color:var(--text-secondary);margin-left:auto"></span></div>'+
+    '<div class="table-summary">'+
+      '<span>厅: <strong>'+escHtml(hn)+'</strong></span>'+
+      '<span>总收入: <strong>¥'+info.totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</strong></span>'+
+      '<span>主播数: <strong>'+hostEntries.length+'</strong></span>'+
+      (info.loc?'<span>地区: <strong>'+info.loc+'</strong></span>':'')+
+      '</div>'+
+    '<div class="table-wrap" id="hostTableWrap"></div></div>';
+  document.getElementById('mainContent').innerHTML = html;
+  window._hostEntries = hostEntries;
+  renderHostTable();
+}
+
+function renderHostTable() {
+  var entries = window._hostEntries || [];
+  var search = (document.getElementById('hostSearch')?.value||'').toLowerCase();
+  var filtered = search ? entries.filter(function(e){return e[0].toLowerCase().indexOf(search)!==-1;}) : entries;
+
+  if (curSort==='rev-desc') filtered.sort(function(a,b){return b[1].totalRev-a[1].totalRev;});
+  else filtered.sort(function(a,b){return a[1].totalRev-b[1].totalRev;});
+
+  document.getElementById('hostCount').textContent = '共 '+filtered.length+' 位主播';
+  var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
+
+  var h = '<table><thead><tr><th>#</th><th>主播昵称</th><th>主播ID</th>'+
+    '<th class="rev-col">流水(元)</th><th class="rev-col">礼物流水</th><th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
+    '<th>上麦时长</th><th class="num-col">有效天</th></tr></thead><tbody>';
+
+  filtered.forEach(function(e, i){
+    var hostName = e[0], hd = e[1];
+    var rec = hd.records[0] || {};
+    var cls = hd.totalRev > 5000 ? ' row-high' : '';
+    var daysCount = hd.records.length;
+    h += '<tr class="'+cls+'"><td>'+(i+1)+'</td>'+
+      '<td><a href="javascript:void(0)" onclick="drillHost(\''+escAttr(hostName)+'\')" style="color:#4f46e5;text-decoration:none;font-weight:600">'+escHtml(hostName)+'</a></td>'+
+      '<td>'+escHtml(rec.hostId||'')+'</td>'+
+      '<td class="rev-col">¥'+fmt(hd.totalRev)+'</td>'+
+      '<td class="num-col">¥'+fmt(rec.gift||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(rec.play||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(rec.lucky||0)+'</td>'+
+      '<td>'+(rec.online||'')+'</td>'+
+      '<td class="num-col">'+(rec.onlineDays||0)+'</td></tr>';
+  });
+  h += '</tbody></table>';
+  document.getElementById('hostTableWrap').innerHTML = h;
+}
+
+function drillHost(hostName) {
+  viewLevel = 'hostDaily';
+  viewHost = hostName;
+  renderAll();
+}
+
+function renderHostDaily() {
+  var hostName = viewHost;
+  var hallName = viewHall;
+  var info = {};
+  var hostInfo = {totalRev:0, records:[]};
+
+  if (hallName) {
+    // Came from hall detail
+    info = hallSummary[hallName] || {};
+    hostInfo = (info.hosts && info.hosts[hostName]) ? info.hosts[hostName] : {totalRev:0, records:[]};
+  } else {
+    // Came from "全部" - aggregate from all halls
+    for (var h in hallSummary) {
+      var hosts = hallSummary[h].hosts || {};
+      if (hosts[hostName]) {
+        hostInfo.totalRev += hosts[hostName].totalRev;
+        hostInfo.records = hostInfo.records.concat(hosts[hostName].records);
+        if (!info.cat || info.cat === '其他') info = {cat: (getHallCat(h).cat), loc: ''};
+      }
+    }
+    if (!info.cat) info.cat = '其他';
+  }
+
+  var records = hostInfo.records.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+
+  var names={内部:'内部','内部加盟':'内部加盟','外部加盟':'外部加盟','其他':'其他'};
+  var bages={内部:'badge-internal','内部加盟':'badge-franchise','外部加盟':'badge-external','其他':''};
+
+  var breadcrumbHtml = '';
+  if (hallName) {
+    breadcrumbHtml =
+      '<span onclick="viewLevel=\'category\';viewCat=null;viewHall=null;viewHost=null;renderAll()">📊 总览</span>'+
+      '<span class="sep">›</span>'+
+      '<span onclick="viewLevel=\'halls\';viewHall=null;viewHost=null;renderAll()">'+names[info.cat]+'</span>'+
+      '<span class="sep">›</span>'+
+      '<span onclick="viewLevel=\'hallDetail\';viewHost=null;renderAll()">'+escHtml(hallName)+'</span>'+
+      '<span class="sep">›</span>'+
+      '<span class="current">'+escHtml(hostName)+'</span>';
+  } else {
+    breadcrumbHtml =
+      '<span onclick="viewLevel=\'category\';viewCat=null;viewHall=null;viewHost=null;renderAll()">📊 总览</span>'+
+      '<span class="sep">›</span>'+
+      '<span onclick="viewLevel=\'allHosts\';viewHall=null;viewHost=null;renderAll()">👥 全部主播</span>'+
+      '<span class="sep">›</span>'+
+      '<span class="current">'+escHtml(hostName)+'</span>';
+  }
+
+  var html = '<div class="detail-section">'+
+    '<div class="detail-header">'+
+      '<div class="breadcrumb">'+breadcrumbHtml+'</div>'+
+      '<span class="badge '+(bages[info.cat]||'')+'">'+names[info.cat]+'</span>'+
+    '</div>'+
+    '<div class="table-summary">'+
+      '<span>主播: <strong>'+escHtml(hostName)+'</strong></span>'+
+      (hallName ? '<span>所属厅: <strong>'+escHtml(hallName)+'</strong></span>' : '')+
+      '<span>总收入: <strong>¥'+hostInfo.totalRev.toLocaleString('zh-CN',{minimumFractionDigits:2})+'</strong></span>'+
+      '<span>天数: <strong>'+records.length+'</strong></span>'+
+    '</div>';
+
+  var fmt = function(n){return n.toLocaleString('zh-CN',{minimumFractionDigits:2});};
+  var totalRev = 0;
+  html += '<div class="table-wrap"><table><thead><tr>'+
+    '<th>日期</th><th class="rev-col">日流水(元)</th><th class="rev-col">礼物流水</th>'+
+    '<th class="rev-col">休闲玩法</th><th class="rev-col">幸运值</th>'+
+    '<th>上麦时长</th><th class="num-col">有效天</th></tr></thead><tbody>';
+
+  records.forEach(function(r){
+    totalRev += r.rev;
+    var cls = r.rev > 5000 ? ' row-high' : '';
+    html += '<tr class="'+cls+'"><td>'+r.date+'</td>'+
+      '<td class="rev-col">¥'+fmt(r.rev)+'</td>'+
+      '<td class="num-col">¥'+fmt(r.gift||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(r.play||0)+'</td>'+
+      '<td class="num-col">¥'+fmt(r.lucky||0)+'</td>'+
+      '<td>'+(r.online||'')+'</td>'+
+      '<td class="num-col">'+(r.onlineDays||0)+'</td></tr>';
+  });
+  html += '<tr style="font-weight:700;background:#f8fafc"><td>合计</td>'+
+    '<td class="rev-col">¥'+fmt(totalRev)+'</td><td></td><td></td><td></td><td></td><td></td></tr>';
+  html += '</tbody></table></div></div>';
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+var _tt;
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.innerHTML = msg; el.classList.add('show');
+  clearTimeout(_tt);
+  _tt = setTimeout(function(){el.classList.remove('show');},2500);
+}
+
+updateImportUI();
+</script>
+</body>
+</html>
