@@ -364,6 +364,8 @@ function processHallFile(file) {
       for (var r=1; r<rows.length; r++) {
         var row = rows[r];
         if (!row||!row[0]||!row[3]) continue;
+        var role = String(row[4]||'').replace(/^[ ]+|[ ]+$/g,'');
+        if (role !== '本公会主播' && role !== '厅主') continue;
         var hall = String(row[0]).replace(/^[ ]+|[ ]+$/g,'');
         var host = String(row[3]).replace(/^[ ]+|[ ]+$/g,'');
         var mins = parseMinutes(row[5]);  // col 5 = 上麦时长
